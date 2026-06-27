@@ -1,0 +1,69 @@
+# STM32CubeIDE / CubeMX build output
+Debug/
+Release/
+build/
+
+# Object files
+*.o
+*.obj
+*.d
+*.crf
+*.dep
+
+# Executable files
+*.elf
+*.hex
+*.bin
+*.axf
+*.map
+*.su
+
+# Linker output
+*.out
+*.app
+
+# Static libraries
+*.a
+*.lib
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Eclipse IDE settings - keep project files, ignore local settings
+.settings/
+!Core/.settings/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Misc
+*.tmp
+*.bak
+*.log
+
+# Claude AI assistant
+.claude/settings.local.json
