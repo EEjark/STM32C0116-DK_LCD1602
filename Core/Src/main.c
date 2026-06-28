@@ -250,6 +250,52 @@ static const char* KeyName(KeyState_t key)
     }
 }
 
+/* ---- RTC 通过串口校准 -------------------------------------------------- */
+static uint8_t RTC_CalcWeekDay(uint8_t y, uint8_t m, uint8_t d)
+{
+    /* Sakamoto 算法: 返回 0=Sun, 1=Mon, ..., 6=Sat */
+    static const int8_t t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+    uint16_t year = 2000 + y;
+    if (m < 3) year--;
+    uint8_t w = (uint8_t)((year + year/4 - year/100 + year/400 + t[m-1] + d) % 7);
+    /* RTC: 1=Mon..7=Sun, 映射: 0→7, 1→1, 2→2, ..., 6→6 */
+    return (w == 0) ? RTC_WEEKDAY_SUNDAY : w;
+}
+
+static uint8_t RTC_SetFromSerial(const char *s)
+{
+    /* 格式: "TIME:YYMMDDHHMMSS" (共 17 字符, 不含 \n) */
+    if (s[0]!='T' || s[1]!='I' || s[2]!='M' || s[3]!='E' || s[4]!=':')
+        return 0;
+    s += 5;
+    for (uint8_t i = 0; i < 12; i++)
+        if (s[i] < '0' || s[i] > '9') return 0;
+
+    int8_t yr = (s[0]-'0')*10 + (s[1]-'0');
+    int8_t mo = (s[2]-'0')*10 + (s[3]-'0');
+    int8_t dy = (s[4]-'0')*10 + (s[5]-'0');
+    int8_t hr = (s[6]-'0')*10 + (s[7]-'0');
+    int8_t mi = (s[8]-'0')*10 + (s[9]-'0');
+    int8_t sc = (s[10]-'0')*10 + (s[11]-'0');
+
+    if (mo < 1 || mo > 12 || dy < 1 || dy > 31 || hr > 23 || mi > 59 || sc > 59)
+        return 0;
+
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
+    sTime.Hours   = hr;
+    sTime.Minutes = mi;
+    sTime.Seconds = sc;
+    sDate.WeekDay = RTC_CalcWeekDay(yr, mo, dy);
+    sDate.Month   = mo;
+    sDate.Date    = dy;
+    sDate.Year    = yr;
+
+    if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK) return 0;
+    if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK) return 0;
+    return 1;
+}
+
 /* ---- UART1 接收 PC 数据 (手动解析) --------------------------------------- */
 void UART1_ProcessRx(void)
 {
@@ -258,24 +304,32 @@ void UART1_ProcessRx(void)
         if (ch == '\n' || ch == '\r') {
             if (g_UART_RxIdx > 0) {
                 g_UART_RxBuf[g_UART_RxIdx] = '\0';
-                /* 格式: "CPU:XXC GPU:XXC MEM:XX% UP:XXhXXm" */
-                const char *p = g_UART_RxBuf;
-                g_PCInfo.cpu_temp  = parse_i8(&p);
-                g_PCInfo.gpu_temp  = parse_i8(&p);
-                g_PCInfo.mem_usage = parse_i8(&p);
-                /* 解析 uptime: "XXhXXm" */
-                while (*p && *p != 'P') p++;  /* 跳到 "UP:" */
-                if (*p) {
-                    int8_t h = 0, m = 0;
-                    while (*p && (*p < '0' || *p > '9')) p++;
-                    while (*p >= '0' && *p <= '9') { h = h * 10 + (*p - '0'); p++; }
-                    while (*p && (*p < '0' || *p > '9')) p++;
-                    while (*p >= '0' && *p <= '9') { m = m * 10 + (*p - '0'); p++; }
-                    fmt_2d(g_PCInfo.uptime,     h); g_PCInfo.uptime[2] = 'h';
-                    fmt_2d(g_PCInfo.uptime + 3, m); g_PCInfo.uptime[5] = 'm';
-                    g_PCInfo.uptime[6] = '\0';
+                /* TIME 校准命令 */
+                if (g_UART_RxBuf[0] == 'T' && g_UART_RxBuf[1] == 'I') {
+                    if (RTC_SetFromSerial(g_UART_RxBuf))
+                        UART1_Send("RTC OK\r\n");
+                    else
+                        UART1_Send("RTC ERR\r\n");
+                } else {
+                    /* 格式: "CPU:XXC GPU:XXC MEM:XX% UP:XXhXXm" */
+                    const char *p = g_UART_RxBuf;
+                    g_PCInfo.cpu_temp  = parse_i8(&p);
+                    g_PCInfo.gpu_temp  = parse_i8(&p);
+                    g_PCInfo.mem_usage = parse_i8(&p);
+                    /* 解析 uptime: "XXhXXm" */
+                    while (*p && *p != 'P') p++;  /* 跳到 "UP:" */
+                    if (*p) {
+                        int8_t h = 0, m = 0;
+                        while (*p && (*p < '0' || *p > '9')) p++;
+                        while (*p >= '0' && *p <= '9') { h = h * 10 + (*p - '0'); p++; }
+                        while (*p && (*p < '0' || *p > '9')) p++;
+                        while (*p >= '0' && *p <= '9') { m = m * 10 + (*p - '0'); p++; }
+                        fmt_2d(g_PCInfo.uptime,     h); g_PCInfo.uptime[2] = 'h';
+                        fmt_2d(g_PCInfo.uptime + 3, m); g_PCInfo.uptime[5] = 'm';
+                        g_PCInfo.uptime[6] = '\0';
+                    }
+                    g_PCInfo.valid = 1;
                 }
-                g_PCInfo.valid = 1;
                 g_UART_RxIdx = 0;
             }
         } else if (g_UART_RxIdx < sizeof(g_UART_RxBuf) - 1) {

@@ -14,6 +14,7 @@
 
 import sys
 import time
+from datetime import datetime
 import serial
 import serial.tools.list_ports
 
@@ -75,7 +76,6 @@ def uptime_str():
         os = w.Win32_OperatingSystem()[0]
         boot = os.LastBootUpTime
         # WMI 格式: "20260101120000.000000+480"
-        from datetime import datetime
         boot_dt = datetime.strptime(boot.split('.')[0], "%Y%m%d%H%M%S")
         delta = datetime.now() - boot_dt
         h = int(delta.total_seconds() // 3600)
@@ -118,6 +118,17 @@ def main():
         print(f"ERROR: {e}")
         return
 
+    # ---- RTC 校时 ---------------------------------------------------------
+    time.sleep(2)  # 等待 STM32 初始化完成
+    try:
+        now = datetime.now()
+        ts = now.strftime("TIME:%y%m%d%H%M%S")
+        ser.write((ts + "\n").encode())
+        resp = ser.readline().decode(errors='ignore').strip()
+        print(f"RTC sync: {ts}  →  {resp}")
+    except Exception as e:
+        print(f"RTC sync failed: {e}")
+
     print(f"Sending PC stats every {interval}s... (Ctrl+C to stop)")
     try:
         while True:
@@ -136,4 +147,4 @@ def main():
         ser.close()
 
 if __name__ == "__main__":
-    main()
+    main()5
