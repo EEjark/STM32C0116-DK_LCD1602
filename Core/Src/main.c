@@ -413,8 +413,8 @@ int main(void)
           page_update = 1;
       }
 
-      /* ---- 每 2 秒读取传感器 ---- */
-      if ((uint32_t)(sTime.Seconds - g_Sensor_LastRead) >= 2) {
+      /* ---- 每 5 秒读取传感器 ---- */
+      if ((uint32_t)(sTime.Seconds - g_Sensor_LastRead) >= 5) {
           g_Sensor_LastRead = sTime.Seconds;
 #ifdef USE_DHT11
           if (DHT11_Read(&g_Sensor_Data) == HAL_OK && g_Sensor_Data.valid)

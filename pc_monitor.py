@@ -95,7 +95,7 @@ def main():
         return
 
     # 端口
-    port = "COM3"  # default
+    port = "COM25"  # default
     baud = 115200
     interval = 3
 

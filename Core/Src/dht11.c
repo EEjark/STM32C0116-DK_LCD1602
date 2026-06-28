@@ -91,7 +91,7 @@ HAL_StatusTypeDef DHT11_Read(DHT11_Data_t *data)
     uint32_t timeout;
 
     if (data == NULL) return HAL_ERROR;
-    data->valid = 0;
+    /* 不在开头清零 valid — 读取失败时保留上次有效数据 */
 
     /* ---- 1. 主机起始信号: 拉低 ≥18ms, 然后释放 20~40µs ---- */
     DHT11_SET_OUTPUT();
