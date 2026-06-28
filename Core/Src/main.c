@@ -141,6 +141,8 @@ typedef struct {
     uint8_t valid;
 } PCInfo_t;
 static PCInfo_t g_PCInfo = {0};
+static uint8_t  g_RTC_Synced = 0;       /* 0=未校准, 1=已校准 */
+static uint32_t g_LastPcQuery = 99;     /* 上次查询 PC 的秒数 */
 
 /* UART1 接收缓冲区 */
 static char    g_UART_RxBuf[64];
@@ -311,10 +313,9 @@ void UART1_ProcessRx(void)
                 g_UART_RxBuf[g_UART_RxIdx] = '\0';
                 /* TIME 校准命令 */
                 if (g_UART_RxBuf[0] == 'T' && g_UART_RxBuf[1] == 'I') {
-                    if (RTC_SetFromSerial(g_UART_RxBuf))
-                        UART1_Send("RTC OK\r\n");
-                    else
-                        UART1_Send("RTC ERR\r\n");
+                    if (RTC_SetFromSerial(g_UART_RxBuf)) {
+                        g_RTC_Synced = 1;
+                    }
                 } else {
                     /* 格式: "CPU:XXC GPU:XXC MEM:XX% UP:XXhXXm" */
                     const char *p = g_UART_RxBuf;
@@ -402,7 +403,7 @@ int main(void)
   /* UART1 启动信息 */
   UART1_Send("\r\nSTM32C011-DK Ready\r\n");
 
-  /* 设置 RTC 初始时间 (可修改为实际时间) */
+  /* 设置 RTC 初始时间 (PC 校时前的默认值) */
   RTC_TimeTypeDef sTime = {0};
   RTC_DateTypeDef sDate = {0};
   sTime.Hours   = 12;
@@ -423,6 +424,9 @@ int main(void)
 #else
   AHT20_Init(&hi2c1);
 #endif
+
+  /* 请求 PC 校准 RTC */
+  UART1_Send("TIME\n");
 
   /* USER CODE END 2 */
 
@@ -499,6 +503,12 @@ int main(void)
               page_update = 1; break;
           default: break;
           }
+      }
+
+      /* ---- 每 5 秒查询 PC ---- */
+      if ((uint32_t)(sTime.Seconds - g_LastPcQuery) >= 5) {
+          g_LastPcQuery = sTime.Seconds;
+          UART1_Send("ASK\n");
       }
 
       /* ---- UART RX ---- */

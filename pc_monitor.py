@@ -118,41 +118,28 @@ def main():
         print(f"ERROR: {e}")
         return
 
-    # ---- RTC 校时 ---------------------------------------------------------
-    time.sleep(2)       # 等待 STM32 初始化完成
-    ser.reset_input_buffer()  # 清空缓冲区残留
-    try:
-        now = datetime.now()
-        ts = now.strftime("TIME:%y%m%d%H%M%S")
-        ser.write((ts + "\n").encode())
-        ser.flush()
-        # 循环读取直到拿到响应 (2s 超时)
-        start = time.time()
-        resp = ""
-        while time.time() - start < 2:
-            line = ser.readline().decode(errors='ignore').strip()
-            if line:
-                resp = line
-                print(f"RTC sync: {ts}  →  {resp}")
-                break
-            time.sleep(0.1)
-        if not resp:
-            print(f"RTC sync: {ts}  →  no response (check firmware)")
-    except Exception as e:
-        print(f"RTC sync failed: {e}")
-
-    print(f"Sending PC stats every {interval}s... (Ctrl+C to stop)")
+    # ---- 轮询响应模式 ---------------------------------------------------
+    # STM32 发送 TIME → PC 回复 TIME:YYMMDDHHMMSS
+    # STM32 发送 ASK  → PC 回复 CPU:XXC GPU:XXC MEM:XX% UP:XXhXXm
+    print("Waiting for STM32 requests... (Ctrl+C to stop)")
     try:
         while True:
-            cpu = cpu_temp()
-            gpu = gpu_temp()
-            mem = mem_usage()
-            up  = uptime_str()
-            msg = f"CPU:{cpu}C GPU:{gpu}C MEM:{mem}% UP:{up}\n"
+            line = ser.readline().decode(errors='ignore').strip()
+            if not line:
+                continue
             now = time.strftime("%H:%M:%S")
-            print(f"[{now}] {msg.strip()}")
-            ser.write(msg.encode())
-            time.sleep(interval)
+            if line.startswith("TIME"):
+                ts = datetime.now().strftime("TIME:%y%m%d%H%M%S")
+                ser.write((ts + "\n").encode())
+                print(f"[{now}] RTC sync → {ts}")
+            elif line.startswith("ASK"):
+                cpu = cpu_temp()
+                gpu = gpu_temp()
+                mem = mem_usage()
+                up  = uptime_str()
+                msg = f"CPU:{cpu}C GPU:{gpu}C MEM:{mem}% UP:{up}"
+                ser.write((msg + "\n").encode())
+                print(f"[{now}] {msg}")
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
