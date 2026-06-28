@@ -8,7 +8,8 @@
 |------|------|------|------|
 | LCD 显示 | SPI1 | PA5/SCK, PA7/MOSI | ST7032S 驱动 (JLX1602G-916 1602 COG) |
 | LCD 片选 | GPIO | PA4/CS, PA6/RS | 软件控制 |
-| 温湿度 | I2C1 | PB7/SCL, PC14/SDA | AHT20 传感器 (0x38) |
+| 温湿度 (DHT11) | GPIO | PA1 | DHT11 单总线 (默认) |
+| 温湿度 (AHT20) | I2C1 | PB7/SCL, PC14/SDA | AHT20 传感器 (0x38, 备选) |
 | 五项按键 | ADC1 | PA8/CH8 | 分压按键 (Select/Left/Down/Up/Right) |
 | 状态灯 | GPIO | PB6 | LED 指示 |
 | PC 通信 | USART1 | PA2/TX, PA3/RX | 接收 PC 硬件信息 (115200) |
@@ -17,7 +18,20 @@
 
 ## 功能特性
 
-- **页面 0** — 实时时钟 + AHT20 温湿度显示
+- **页面 0** — 实时时钟 + 温湿度显示
+
+通过 UP/DOWN 按键切换页面。
+
+### 传感器切换
+
+`main.c` 顶部通过宏选择传感器：
+
+```c
+#define USE_DHT11    /* 使用 DHT11 (PA1 单总线), 注释掉此行则使用 AHT20 (I2C) */
+```
+
+- **DHT11**（默认）— 单总线协议，数据线 PA1，需外部 4.7kΩ~10kΩ 上拉电阻
+- **AHT20** — I2C 协议，地址 0x38，使用 I2C1 (PB7/SCL, PC14/SDA)
 - **页面 1** — 板卡状态 (LED + 按键状态)
 - **页面 2** — PC 硬件监控 (CPU/GPU 温度、内存占用、开机时长)
 
@@ -74,7 +88,8 @@ C011_LCD/
 │   ├── Src/              # 源文件
 │   │   ├── main.c        # 主程序
 │   │   ├── lcd_st7032s.c # LCD ST7032S 驱动
-│   │   ├── aht20.c       # AHT20 温湿度传感器驱动
+│   │   ├── dht11.c       # DHT11 温湿度传感器驱动 (默认)
+│   │   ├── aht20.c       # AHT20 温湿度传感器驱动 (备选)
 │   │   ├── stm32c0xx_it.c
 │   │   ├── stm32c0xx_hal_msp.c
 │   │   ├── syscalls.c

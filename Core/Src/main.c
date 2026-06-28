@@ -22,8 +22,17 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+/* ---- 传感器选择 (二选一) ------------------------------------------------ */
+#define USE_DHT11    /* 使用 DHT11 (PA1 单总线), 注释掉此行则使用 AHT20 (I2C) */
+/* ------------------------------------------------------------------------ */
+
 #include "lcd_st7032s.h"
+
+#ifdef USE_DHT11
+#include "dht11.h"
+#else
 #include "aht20.h"
+#endif
 
 #include <stdint.h>
 /* USER CODE END Includes */
@@ -137,9 +146,13 @@ static PCInfo_t g_PCInfo = {0};
 static char    g_UART_RxBuf[64];
 static uint8_t g_UART_RxIdx = 0;
 
-/* AHT20 温湿度 */
-static AHT20_Data_t g_AHT20_Data = {0};
-static uint32_t     g_AHT20_LastRead = 0;  /* 上次读取的秒数 */
+/* 温湿度传感器 */
+#ifdef USE_DHT11
+static DHT11_Data_t g_Sensor_Data = {0};
+#else
+static AHT20_Data_t g_Sensor_Data = {0};
+#endif
+static uint32_t     g_Sensor_LastRead = 0;  /* 上次读取的秒数 */
 
 /* USER CODE END PV */
 
@@ -345,8 +358,12 @@ int main(void)
   if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK)
       Error_Handler();
 
-  /* 初始化 AHT20 */
+  /* 初始化温湿度传感器 */
+#ifdef USE_DHT11
+  DHT11_Init();
+#else
   AHT20_Init(&hi2c1);
+#endif
 
   /* USER CODE END 2 */
 
@@ -396,10 +413,14 @@ int main(void)
           page_update = 1;
       }
 
-      /* ---- 每 2 秒 AHT20 ---- */
-      if ((uint32_t)(sTime.Seconds - g_AHT20_LastRead) >= 2) {
-          g_AHT20_LastRead = sTime.Seconds;
-          if (AHT20_Read(&hi2c1, &g_AHT20_Data) == HAL_OK && g_AHT20_Data.valid)
+      /* ---- 每 2 秒读取传感器 ---- */
+      if ((uint32_t)(sTime.Seconds - g_Sensor_LastRead) >= 2) {
+          g_Sensor_LastRead = sTime.Seconds;
+#ifdef USE_DHT11
+          if (DHT11_Read(&g_Sensor_Data) == HAL_OK && g_Sensor_Data.valid)
+#else
+          if (AHT20_Read(&hi2c1, &g_Sensor_Data) == HAL_OK && g_Sensor_Data.valid)
+#endif
               page_update = 1;
       }
 
@@ -431,12 +452,29 @@ int main(void)
           switch (g_Page) {
           case 0:
               LCD_Print(0, 0, time_str);
-              if (g_AHT20_Data.valid) {
-                  int16_t t = (int16_t)g_AHT20_Data.temperature;
-                  int16_t td = (int16_t)(g_AHT20_Data.temperature * 10.0f) % 10;
+              if (g_Sensor_Data.valid) {
+#ifdef USE_DHT11
+                  /* DHT11: 仅整数温度/湿度 */
+                  int16_t t = (int16_t)g_Sensor_Data.temperature;
+                  int16_t h = (int16_t)g_Sensor_Data.humidity;
+                  /* "T:XXC H:XX% " */
+                  memcpy(lcd_line1, "T:", 2);
+                  fmt_2d(lcd_line1 + 2, t); lcd_line1[4] = 'C';
+                  lcd_line1[5] = ' ';
+                  memcpy(lcd_line1 + 6, "H:", 2);
+                  fmt_2d(lcd_line1 + 8, h); lcd_line1[10] = '%';
+                  lcd_line1[11] = ' ';
+                  lcd_line1[12] = ' ';
+                  lcd_line1[13] = ' ';
+                  lcd_line1[14] = ' ';
+                  lcd_line1[15] = '\0';
+#else
+                  /* AHT20: 带一位小数温湿度 */
+                  int16_t t = (int16_t)g_Sensor_Data.temperature;
+                  int16_t td = (int16_t)(g_Sensor_Data.temperature * 10.0f) % 10;
                   if (td < 0) td = -td;
-                  int16_t h = (int16_t)g_AHT20_Data.humidity;
-                  int16_t hd = (int16_t)(g_AHT20_Data.humidity * 10.0f) % 10;
+                  int16_t h = (int16_t)g_Sensor_Data.humidity;
+                  int16_t hd = (int16_t)(g_Sensor_Data.humidity * 10.0f) % 10;
                   if (hd < 0) hd = -hd;
                   /* "T:XX.XC H:XX.X%" */
                   memcpy(lcd_line1, "T:", 2);
@@ -447,6 +485,7 @@ int main(void)
                   fmt_2d(lcd_line1 + 10, h); lcd_line1[12] = '.';
                   fmt_1d(lcd_line1 + 13, hd); lcd_line1[14] = '%';
                   lcd_line1[15] = '\0';
+#endif
               } else {
                   memcpy(lcd_line1, "T:--.-C H:--.-%", 15);
                   lcd_line1[15] = '\0';
@@ -820,13 +859,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_6, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_6, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PA4 PA6 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_6;
+  /*Configure GPIO pins : PA1 PA4 PA6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
