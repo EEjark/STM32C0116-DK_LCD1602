@@ -291,9 +291,14 @@ static uint8_t RTC_SetFromSerial(const char *s)
     sDate.Date    = dy;
     sDate.Year    = yr;
 
-    if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK) return 0;
-    if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK) return 0;
-    return 1;
+    /* 显式解锁写保护, 确保可写 */
+    __HAL_RTC_WRITEPROTECTION_DISABLE(&hrtc);
+    HAL_StatusTypeDef ret = HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    if (ret == HAL_OK)
+        ret = HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+    __HAL_RTC_WRITEPROTECTION_ENABLE(&hrtc);
+
+    return (ret == HAL_OK) ? 1 : 0;
 }
 
 /* ---- UART1 接收 PC 数据 (手动解析) --------------------------------------- */

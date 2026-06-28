@@ -119,13 +119,25 @@ def main():
         return
 
     # ---- RTC 校时 ---------------------------------------------------------
-    time.sleep(2)  # 等待 STM32 初始化完成
+    time.sleep(2)       # 等待 STM32 初始化完成
+    ser.reset_input_buffer()  # 清空缓冲区残留
     try:
         now = datetime.now()
         ts = now.strftime("TIME:%y%m%d%H%M%S")
         ser.write((ts + "\n").encode())
-        resp = ser.readline().decode(errors='ignore').strip()
-        print(f"RTC sync: {ts}  →  {resp}")
+        ser.flush()
+        # 循环读取直到拿到响应 (2s 超时)
+        start = time.time()
+        resp = ""
+        while time.time() - start < 2:
+            line = ser.readline().decode(errors='ignore').strip()
+            if line:
+                resp = line
+                print(f"RTC sync: {ts}  →  {resp}")
+                break
+            time.sleep(0.1)
+        if not resp:
+            print(f"RTC sync: {ts}  →  no response (check firmware)")
     except Exception as e:
         print(f"RTC sync failed: {e}")
 
@@ -147,4 +159,4 @@ def main():
         ser.close()
 
 if __name__ == "__main__":
-    main()5
+    main()
